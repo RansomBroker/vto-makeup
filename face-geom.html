@@ -110,8 +110,8 @@
         );
       }
 
-      function createLipsMesh(landmarks) {
-        const lipsVertex = [
+      function createFaceMesh(landmarks) {
+        const facesVertex = [
           [14, 15, 86],
           [14, 87, 86],
           [14, 317, 316],
@@ -244,7 +244,7 @@
         });
 
         const indices = [];
-        lipsVertex.forEach((face) => {
+        facesVertex.forEach((face) => {
           indices.push(...face);
         });
 
@@ -266,7 +266,7 @@
           transparent: true,
           opacity: 0.6,
           flatShading: true,
-          wireframe: false,
+          wireframe: true,
           depthTest: true,
           depthWrite: true,
           emissive: 0x000000,
@@ -284,99 +284,6 @@
         directionalLight.position.set(0, 100, 500);
 
         scene.add(directionalLight);
-      }
-
-      function createLipsLinerMesh(landmarks) {
-        const lipsVertex = [
-          [16, 17, 84],
-          [16, 85, 84],
-          [16, 315, 314],
-          [16, 17, 314],
-          [315, 404, 405],
-          [315, 314, 405],
-          [404, 320, 321],
-          [404, 405, 321],
-          [320, 307, 375],
-          [320, 321, 375],
-          [307, 306, 291],
-          [307, 375, 291],
-          [306, 408, 409],
-          [306, 291, 409],
-          [408, 304, 270],
-          [408, 409, 270],
-          [304, 303, 269],
-          [304, 270, 269],
-          [303, 269, 267],
-          [303, 302, 267],
-          [302, 11, 0],
-          [302, 267, 0],
-          [11, 72, 37],
-          [11, 0, 37],
-          [72, 73, 39],
-          [72, 37, 39],
-          [73, 74, 40],
-          [73, 39, 40],
-          [74, 184, 185],
-          [74, 40, 185],
-          [184, 76, 61],
-          [184, 185, 61],
-          [76, 61, 146],
-          [76, 77, 146],
-          [77, 146, 91],
-          [77, 90, 91],
-          [90, 91, 181],
-          [90, 180, 181],
-          [180, 181, 84],
-          [180, 85, 84],
-        ];
-
-        const vertices = [];
-        landmarks.forEach((lm) => {
-          vertices.push(
-            (1 - lm.x) * outputCanvas.width - outputCanvas.width / 2, // Centering x
-            -lm.y * outputCanvas.height + outputCanvas.height / 2, // Centering y and flipping
-            0 // Adjust depth if necessary
-          );
-        });
-
-        const indices = [];
-        lipsVertex.forEach((face) => {
-          indices.push(...face);
-        });
-
-        const geometry = new THREE.BufferGeometry();
-
-        geometry.setAttribute(
-          "position",
-          new THREE.Float32BufferAttribute(vertices, 3)
-        );
-
-        geometry.setIndex(indices);
-        geometry.computeVertexNormals();
-
-        const material = new THREE.MeshStandardMaterial({
-          color: 0xff0000,
-          roughness: 0.5, // Adjust roughness value
-          metalness: 0, // Optionally adjust metalness
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.25,
-          flatShading: true,
-          wireframe: false,
-          emissive: 0x000000,
-        });
-
-        const mesh = new THREE.Mesh(geometry, material);
-
-        // Add lighting
-        const ambientLight = new THREE.AmbientLight(0x000000, 1);
-        scene.add(ambientLight);
-
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(0, 1, 1);
-        scene.add(directionalLight);
-
-        return mesh;
       }
 
       function onResults(results) {
@@ -403,9 +310,8 @@
         scene.clear(); // Clear previous meshes
 
         results.multiFaceLandmarks.forEach((landmarks) => {
-          const lipsMesh = createLipsMesh(landmarks);
-          //const lipLinerMesh = createLipsLinerMesh(landmarks);
-          scene.add(lipsMesh);
+          const faceMesh = createFaceMesh(landmarks);
+          scene.add(faceMesh);
         });
 
         renderer.render(scene, camera);
