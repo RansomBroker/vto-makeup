@@ -111,7 +111,7 @@
       }
 
       function createFaceMesh(landmarks) {
-        const facesVertex = [
+        const lipsVertex = [
           [14, 15, 86],
           [14, 87, 86],
           [14, 317, 316],
@@ -233,6 +233,23 @@
           [407, 292, 308],
           [407, 415, 308],
         ];
+
+        const cheekLeftVertex = [
+          //Pipi Kiri
+          [356, 447, 454],
+          [447, 366, 454],
+          [447, 366, 352],
+          [352, 366, 376],
+          [454, 366, 323],
+          [352, 376, 411],
+          [366, 401, 323],
+          [366, 401, 376],
+          [376, 401, 433],
+          [376, 433, 416],
+          [376, 411, 416],
+        ];
+
+        const facesVertex = [...lipsVertex, ...cheekLeftVertex];
 
         const vertices = [];
         landmarks.forEach((lm) => {
