@@ -1234,65 +1234,36 @@
         324, 310, 88, 80, 95, 415, 310, 324, 191, 95, 80,
       ];
 
-      // Create the face mesh geometry
-      const geometry = new THREE.BufferGeometry();
-      const vertices = new Float32Array(positions.length * 3);
-      const uvArray = new Float32Array(uvs.length * 2);
+      function createMesh(results) {
+        // Create the face mesh geometry
+        const geometry = new THREE.BufferGeometry();
+        const vertices = new Float32Array(positions.length * 3);
+        const uvArray = new Float32Array(uvs.length * 2);
 
-      for (let i = 0; i < positions.length; i++) {
-        vertices[i * 3] = positions[i][0];
-        vertices[i * 3 + 1] = positions[i][1];
-        vertices[i * 3 + 2] = positions[i][2];
-      }
-
-      for (let i = 0; i < uvs.length; i++) {
-        uvArray[i * 2] = uvs[i][0];
-        uvArray[i * 2 + 1] = uvs[i][1];
-      }
-
-      geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
-      geometry.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2));
-      geometry.setIndex(faces);
-
-      // Edit kode disini
-      const texture = new THREE.TextureLoader().load("texture/blushon2.png");
-
-      const material = new THREE.MeshBasicMaterial({
-        alphaMap: texture,
-        alphaTest: 0,
-        color: 0xff94fb,
-        transparent: true,
-        opacity: 0.5,
-        side: THREE.DoubleSide,
-        wireframe: false,
-        depthTest: true,
-        depthWrite: true,
-      });
-
-      const mesh = new THREE.Mesh(geometry, material);
-      scene.add(mesh);
-
-      function onResults(results) {
-        if (
-          !results.multiFaceLandmarks ||
-          results.multiFaceLandmarks.length === 0
-        ) {
-          renderer.render(scene, camera);
-          return;
+        for (let i = 0; i < positions.length; i++) {
+          vertices[i * 3] = positions[i][0];
+          vertices[i * 3 + 1] = positions[i][1];
+          vertices[i * 3 + 2] = positions[i][2];
         }
 
-        outputCtx.save();
-        outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-        outputCtx.translate(outputCanvas.width, 0);
-        outputCtx.scale(-1, 1);
-        outputCtx.drawImage(
-          results.image,
-          0,
-          0,
-          outputCanvas.width,
-          outputCanvas.height
-        );
+        for (let i = 0; i < uvs.length; i++) {
+          uvArray[i * 2] = uvs[i][0];
+          uvArray[i * 2 + 1] = uvs[i][1];
+        }
 
+        geometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(vertices, 3)
+        );
+        geometry.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2));
+        geometry.setIndex(faces);
+
+        const mesh = new THREE.Mesh(geometry);
+
+        return mesh;
+      }
+
+      function updatePosition(results, mesh) {
         for (const landmarks of results.multiFaceLandmarks) {
           // Update the face mesh vertices
           const positions = mesh.geometry.attributes.position.array;
@@ -1306,6 +1277,63 @@
           }
           mesh.geometry.attributes.position.needsUpdate = true;
         }
+      }
+
+      let eyeshadow = createMesh();
+      let eyebrow = createMesh();
+
+      const textureEyeshadow = new THREE.TextureLoader().load(
+        "texture/eyeshadow/eyeshadow-1.png"
+      );
+
+      const textureEyeBrow = new THREE.TextureLoader().load(
+        "texture/eyebrow/eyebrow-1.png"
+      );
+
+      const material = new THREE.MeshBasicMaterial({
+        alphaMap: textureEyeshadow,
+        alphaTest: 0,
+        color: 0xff94fb,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+        wireframe: false,
+        depthTest: true,
+        depthWrite: true,
+      });
+
+      const eyebrowMaterial = new THREE.MeshBasicMaterial({
+        alphaMap: textureEyeBrow,
+        alphaTest: 0,
+        color: 0xff94fb,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+        wireframe: false,
+        depthTest: true,
+        depthWrite: true,
+      });
+
+      eyeshadow.material = material;
+      eyebrow.material = eyebrowMaterial;
+
+      scene.add(eyeshadow, eyebrow);
+
+      function onResults(results) {
+        outputCtx.save();
+        outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+        outputCtx.translate(outputCanvas.width, 0);
+        outputCtx.scale(-1, 1);
+        outputCtx.drawImage(
+          results.image,
+          0,
+          0,
+          outputCanvas.width,
+          outputCanvas.height
+        );
+
+        updatePosition(results, eyeshadow);
+        updatePosition(results, eyebrow);
 
         renderer.render(scene, camera);
         outputCtx.restore();
