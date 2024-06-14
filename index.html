@@ -1264,6 +1264,8 @@
       }
 
       function updatePosition(results, mesh) {
+        if (!results.multiFaceLandmarks) return;
+
         for (const landmarks of results.multiFaceLandmarks) {
           // Update the face mesh vertices
           const positions = mesh.geometry.attributes.position.array;
@@ -1280,7 +1282,9 @@
       }
 
       let eyeshadow = createMesh();
+      let eyeshadowTwo = createMesh();
       let eyebrow = createMesh();
+      let eyelashes = createMesh();
 
       const textureEyeshadow = new THREE.TextureLoader().load(
         "texture/eyeshadow/eyeshadow-1.png"
@@ -1290,13 +1294,33 @@
         "texture/eyebrow/eyebrow-1.png"
       );
 
+      const textureEyeshadowTwo = new THREE.TextureLoader().load(
+        "texture/eyeshadow/eyeshadow-2.png"
+      );
+
+      const textureEyelashes = new THREE.TextureLoader().load(
+        "texture/eyelashes/eyelashes-1.png"
+      );
+
       const material = new THREE.MeshBasicMaterial({
         alphaMap: textureEyeshadow,
         alphaTest: 0,
-        color: 0xff94fb,
+        color: 0xc3301d,
         transparent: true,
-        opacity: 0.5,
-        side: THREE.DoubleSide,
+        opacity: 1,
+        side: THREE.BackSide,
+        wireframe: false,
+        depthTest: true,
+        depthWrite: true,
+      });
+
+      const materialEyeshadowTwo = new THREE.MeshBasicMaterial({
+        alphaMap: textureEyeshadowTwo,
+        alphaTest: 0,
+        color: 0x00a2ff,
+        transparent: true,
+        opacity: 0.1,
+        side: THREE.BackSide,
         wireframe: false,
         depthTest: true,
         depthWrite: true,
@@ -1305,19 +1329,33 @@
       const eyebrowMaterial = new THREE.MeshBasicMaterial({
         alphaMap: textureEyeBrow,
         alphaTest: 0,
-        color: 0xff94fb,
+        color: 0x603f34,
         transparent: true,
-        opacity: 0.5,
-        side: THREE.DoubleSide,
+        opacity: 1,
+        side: THREE.BackSide,
         wireframe: false,
         depthTest: true,
         depthWrite: true,
       });
 
-      eyeshadow.material = material;
-      eyebrow.material = eyebrowMaterial;
+      const eyelashesMaterial = new THREE.MeshBasicMaterial({
+        alphaMap: textureEyelashes,
+        alphaTest: 0,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 1,
+        side: THREE.BackSide,
+        wireframe: false,
+        depthTest: true,
+        depthWrite: true,
+      });
 
-      scene.add(eyeshadow, eyebrow);
+      //eyeshadow.material = material;
+      //eyeshadowTwo.material = materialEyeshadowTwo;
+      //eyebrow.material = eyebrowMaterial;
+      eyelashes.material = eyelashesMaterial;
+
+      scene.add(eyelashes);
 
       function onResults(results) {
         outputCtx.save();
@@ -1332,9 +1370,12 @@
           outputCanvas.height
         );
 
-        // update position wajib
-        updatePosition(results, eyeshadow);
-        updatePosition(results, eyebrow);
+        // Automatically update position for all meshes in the scene
+        scene.children.forEach((child) => {
+          if (child.isMesh) {
+            updatePosition(results, child);
+          }
+        });
 
         renderer.render(scene, camera);
         outputCtx.restore();
