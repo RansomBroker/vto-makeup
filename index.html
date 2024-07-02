@@ -1282,80 +1282,25 @@
       }
 
       let eyeshadow = createMesh();
-      let eyeshadowTwo = createMesh();
-      let eyebrow = createMesh();
-      let eyelashes = createMesh();
-
       const textureEyeshadow = new THREE.TextureLoader().load(
         "texture/eyeshadow/eyeshadow-1.png"
       );
 
-      const textureEyeBrow = new THREE.TextureLoader().load(
-        "texture/eyebrow/eyebrow-1.png"
-      );
-
-      const textureEyeshadowTwo = new THREE.TextureLoader().load(
-        "texture/eyeshadow/eyeshadow-2.png"
-      );
-
-      const textureEyelashes = new THREE.TextureLoader().load(
-        "texture/eyelashes/eyelashes-1.png"
-      );
-
-      const material = new THREE.MeshBasicMaterial({
+      const materialEyeshadow = new THREE.MeshBasicMaterial({
         alphaMap: textureEyeshadow,
-        alphaTest: 0,
-        color: 0xc3301d,
-        transparent: true,
-        opacity: 1,
-        side: THREE.BackSide,
-        wireframe: false,
-        depthTest: true,
-        depthWrite: true,
-      });
-
-      const materialEyeshadowTwo = new THREE.MeshBasicMaterial({
-        alphaMap: textureEyeshadowTwo,
         alphaTest: 0,
         color: 0x00a2ff,
         transparent: true,
-        opacity: 0.1,
+        opacity: 0.8,
         side: THREE.BackSide,
         wireframe: false,
         depthTest: true,
         depthWrite: true,
       });
 
-      const eyebrowMaterial = new THREE.MeshBasicMaterial({
-        alphaMap: textureEyeBrow,
-        alphaTest: 0,
-        color: 0x603f34,
-        transparent: true,
-        opacity: 1,
-        side: THREE.BackSide,
-        wireframe: false,
-        depthTest: true,
-        depthWrite: true,
-      });
+      eyeshadow.material = materialEyeshadow;
 
-      const eyelashesMaterial = new THREE.MeshBasicMaterial({
-        alphaMap: textureEyelashes,
-        alphaTest: 0,
-        color: 0xffffff,
-        transparent: true,
-        opacity: 1,
-        side: THREE.BackSide,
-        wireframe: false,
-        depthTest: true,
-        depthWrite: true,
-      });
-
-      //eyeshadow.material = material;
-      //eyeshadowTwo.material = materialEyeshadowTwo;
-      //eyebrow.material = eyebrowMaterial;
-      eyelashes.material = eyelashesMaterial;
-
-      scene.add(eyelashes);
+      scene.add(eyeshadow);
 
       function onResults(results) {
         outputCtx.save();
