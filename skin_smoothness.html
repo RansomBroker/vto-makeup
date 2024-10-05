@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Efek Skin Smoothing pada Gambar</title>
+    <!-- Mediapipe FaceMesh -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        background-color: #f0f0f0;
+      }
+      .controls {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+        width: 640px;
+      }
+      .controls label {
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+      }
+      .controls input[type="range"] {
+        width: 100%;
+      }
+      #uploadContainer {
+        margin-bottom: 20px;
+      }
+      #threeCanvas {
+        border: 1px solid #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="uploadContainer">
+      <input type="file" id="imageUpload" accept="image/*" />
+    </div>
+    <div class="controls">
+      <!-- Slider untuk Kontrol Sigma Spatial (Intensitas Penghalusan Kulit) -->
+      <label for="sigmaSpatialSlider">
+        Intensitas Penghalusan Kulit (Sigma Spatial):
+      </label>
+      <input
+        type="range"
+        id="sigmaSpatialSlider"
+        min="3"
+        max="500"
+        step="0.1"
+        value="10"
+      />
+
+      <!-- Slider untuk Kontrol Sigma Color -->
+      <label for="sigmaColorSlider">Sigma Color:</label>
+      <input
+        type="range"
+        id="sigmaColorSlider"
+        min="0.05"
+        max="0.5"
+        step="0.01"
+        value="0.1"
+      />
+
+      <!-- Slider untuk Kontrol Strength Smoothing -->
+      <label for="smoothingStrengthSlider">Strength Smoothing:</label>
+      <input
+        type="range"
+        id="smoothingStrengthSlider"
+        min="0"
+        max="1.25"
+        step="0.01"
+        value="0.7"
+      />
+    </div>
+    <canvas id="threeCanvas" width="640" height="480"></canvas>
+
+    <script>
+      const imageUpload = document.getElementById("imageUpload");
+      const threeCanvas = document.getElementById("threeCanvas");
+      const sigmaSpatialSlider = document.getElementById("sigmaSpatialSlider");
+      const sigmaColorSlider = document.getElementById("sigmaColorSlider");
+      const smoothingStrengthSlider = document.getElementById(
+        "smoothingStrengthSlider"
+      );
+
+      let renderer, scene, camera, material, mesh, maskTexture;
+      let maskCanvas, maskContext;
+      let faceMesh;
+      let imageTexture;
+
+      // Fungsi untuk menghitung Convex Hull menggunakan algoritma Andrew's Monotone Chain
+      function computeConvexHull(points) {
+        // Sort the points by x, then by y
+        points.sort((a, b) => (a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]));
+
+        const cross = (o, a, b) => {
+          return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+        };
+
+        const lower = [];
+        for (let point of points) {
+          while (
+            lower.length >= 2 &&
+            cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0
+          ) {
+            lower.pop();
+          }
+          lower.push(point);
+        }
+
+        const upper = [];
+        for (let i = points.length - 1; i >= 0; i--) {
+          const point = points[i];
+          while (
+            upper.length >= 2 &&
+            cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0
+          ) {
+            upper.pop();
+          }
+          upper.push(point);
+        }
+
+        // Concatenate lower and upper to get full hull
+        lower.pop();
+        upper.pop();
+        return lower.concat(upper);
+      }
+
+      // Inisialisasi Three.js
+      function initThreeJS() {
+        renderer = new THREE.WebGLRenderer({
+          canvas: threeCanvas,
+          alpha: true,
+          antialias: true,
+        });
+
+        renderer.setSize(threeCanvas.width, threeCanvas.height);
+        renderer.setPixelRatio(window.devicePixelRatio); // Untuk resolusi tinggi
+        renderer.autoClear = false;
+
+        scene = new THREE.Scene();
+
+        camera = new THREE.OrthographicCamera(
+          threeCanvas.width / -2,
+          threeCanvas.width / 2,
+          threeCanvas.height / 2,
+          threeCanvas.height / -2,
+          -1000,
+          1000
+        );
+
+        camera.position.z = 1;
+
+        // Mask Texture
+        maskCanvas = document.createElement("canvas");
+        maskCanvas.width = threeCanvas.width;
+        maskCanvas.height = threeCanvas.height;
+        maskContext = maskCanvas.getContext("2d");
+
+        maskTexture = new THREE.CanvasTexture(maskCanvas);
+        maskTexture.minFilter = THREE.LinearFilter;
+        maskTexture.magFilter = THREE.LinearFilter;
+        maskTexture.format = THREE.RedFormat; // Mask hanya perlu channel merah
+
+        // Shader Material dengan Bilateral Filter
+        const vertexShader = `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `;
+
+        const fragmentShader = `
+          precision mediump float;
+          varying vec2 vUv;
+          uniform sampler2D imageTexture;
+          uniform sampler2D maskTexture;
+          uniform vec2 resolution;
+          uniform float sigmaSpatial;
+          uniform float sigmaColor;
+          uniform float smoothingStrength;
+
+          void main() {
+              // Sample mask
+              float mask = texture2D(maskTexture, vUv).r;
+
+              if(mask < 0.5){
+                  // Jika mask tidak aktif, tampilkan warna asli
+                  gl_FragColor = texture2D(imageTexture, vUv);
+                  return;
+              }
+
+              // Mendapatkan warna asli
+              vec4 originalColor = texture2D(imageTexture, vUv);
+
+              // Bilateral Filter parameters
+              float twoSigmaSpatialSq = 2.0 * sigmaSpatial * sigmaSpatial;
+              float twoSigmaColorSq = 2.0 * sigmaColor * sigmaColor;
+
+              vec3 colorSum = vec3(0.0);
+              float weightSum = 0.0;
+
+              // Kernel size, disesuaikan dengan sigmaSpatial
+              int kernelRadius = int(ceil(3.0 * sigmaSpatial));
+              // Batas maksimum kernel radius untuk performa
+              kernelRadius = min(kernelRadius, 10);
+
+              for(int x = -10; x <= 10; x++) {
+                  for(int y = -10; y <= 10; y++) {
+                      // Hanya gunakan sampel dalam radius kernel
+                      float distanceSq = float(x * x + y * y);
+                      if(distanceSq > (float(kernelRadius) * float(kernelRadius))){
+                          continue;
+                      }
+
+                      // Calculate offset
+                      vec2 offset = vec2(float(x), float(y)) / resolution;
+
+                      // Sample neighboring color
+                      vec4 neighborColor = texture2D(imageTexture, vUv + offset);
+
+                      // Spatial weight (Gaussian)
+                      float spatialWeight = exp(-(distanceSq) / twoSigmaSpatialSq);
+
+                      // Color weight (Gaussian)
+                      float colorDist = distance(neighborColor.rgb, originalColor.rgb);
+                      float colorWeight = exp(-(colorDist * colorDist) / twoSigmaColorSq);
+
+                      // Combined weight
+                      float weight = spatialWeight * colorWeight;
+
+                      colorSum += neighborColor.rgb * weight;
+                      weightSum += weight;
+                  }
+              }
+
+              // Bilateral filtered color
+              vec3 bilateralColor = colorSum / weightSum;
+
+              // **Tambahkan langkah pencampuran tambahan untuk warna kulit**
+              // Misalnya, campurkan bilateralColor dengan warna rata-rata kulit
+              // Anda dapat menyesuaikan faktor pencampuran sesuai kebutuhan
+              vec3 skinBlendColor = mix(originalColor.rgb, bilateralColor, smoothingStrength * 1.2); // Faktor 1.2 untuk intensitas
+
+              gl_FragColor = vec4(skinBlendColor, originalColor.a);
+          }
+        `;
+
+        const uniforms = {
+          imageTexture: { value: null }, // Akan diisi setelah gambar diunggah
+          maskTexture: { value: maskTexture },
+          resolution: {
+            value: new THREE.Vector2(threeCanvas.width, threeCanvas.height),
+          },
+          sigmaSpatial: { value: parseFloat(sigmaSpatialSlider.value) }, // Nilai awal sigmaSpatial
+          sigmaColor: { value: parseFloat(sigmaColorSlider.value) }, // Nilai awal sigmaColor
+          smoothingStrength: {
+            value: parseFloat(smoothingStrengthSlider.value),
+          }, // Nilai awal smoothingStrength
+        };
+
+        material = new THREE.ShaderMaterial({
+          uniforms: uniforms,
+          vertexShader: vertexShader,
+          fragmentShader: fragmentShader,
+        });
+
+        const geometry = new THREE.PlaneGeometry(
+          threeCanvas.width,
+          threeCanvas.height,
+          1,
+          1
+        );
+
+        mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(0, 0, -10);
+        scene.add(mesh);
+
+        // Update uniforms saat slider berubah
+        sigmaSpatialSlider.addEventListener("input", (e) => {
+          const sigmaSpatialValue = parseFloat(e.target.value);
+          uniforms.sigmaSpatial.value = sigmaSpatialValue;
+        });
+
+        sigmaColorSlider.addEventListener("input", (e) => {
+          const sigmaColorValue = parseFloat(e.target.value);
+          uniforms.sigmaColor.value = sigmaColorValue;
+        });
+
+        smoothingStrengthSlider.addEventListener("input", (e) => {
+          const smoothingStrengthValue = parseFloat(e.target.value);
+          uniforms.smoothingStrength.value = smoothingStrengthValue;
+        });
+
+        // Update resolusi saat window resize
+        window.addEventListener("resize", () => {
+          const width = threeCanvas.clientWidth;
+          const height = threeCanvas.clientHeight;
+
+          renderer.setSize(width, height);
+          uniforms.resolution.value.set(width, height);
+
+          // Update mask canvas ukuran jika diperlukan
+          maskCanvas.width = width;
+          maskCanvas.height = height;
+          maskTexture.needsUpdate = true;
+        });
+
+        // Render loop
+        function animate() {
+          requestAnimationFrame(animate);
+          renderer.render(scene, camera);
+        }
+
+        animate();
+      }
+
+      // Inisialisasi Three.js
+      initThreeJS();
+
+      // Inisialisasi FaceMesh
+      function initFaceMesh() {
+        faceMesh = new FaceMesh({
+          locateFile: (file) =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+        });
+
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+
+        faceMesh.onResults(onResults);
+      }
+
+      initFaceMesh();
+
+      // Event listener untuk mengunggah gambar
+      imageUpload.addEventListener("change", handleImageUpload);
+
+      async function handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        img.onload = async () => {
+          // Ukuran gambar disesuaikan dengan canvas
+          const imageCanvas = document.createElement("canvas");
+          imageCanvas.width = threeCanvas.width;
+          imageCanvas.height = threeCanvas.height;
+          const ctx = imageCanvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, imageCanvas.width, imageCanvas.height);
+
+          // Kirim gambar ke FaceMesh
+          await faceMesh.send({ image: imageCanvas });
+
+          // Update texture dengan gambar
+          if (imageTexture) {
+            imageTexture.image = imageCanvas;
+            imageTexture.needsUpdate = true;
+          } else {
+            imageTexture = new THREE.CanvasTexture(imageCanvas);
+            imageTexture.minFilter = THREE.LinearFilter;
+            imageTexture.magFilter = THREE.LinearFilter;
+            imageTexture.format = THREE.RGBFormat; // Pastikan format benar
+            material.uniforms.imageTexture.value = imageTexture;
+          }
+        };
+      }
+
+      // Fungsi untuk menggambar mask berdasarkan Convex Hull landmark
+      function drawMask(landmarks) {
+        if (!landmarks) return;
+
+        // Reset mask
+        maskContext.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+        // Convert landmark koordinat ke pixel
+        const points = landmarks.map((landmark) => {
+          return [
+            landmark.x * maskCanvas.width,
+            landmark.y * maskCanvas.height,
+          ];
+        });
+
+        // Hitung Convex Hull dari titik-titik landmark
+        const hull = computeConvexHull(points);
+
+        if (hull.length < 3) return; // Tidak cukup titik untuk membentuk poligon
+
+        // Buat path utama (Convex Hull)
+        maskContext.beginPath();
+        hull.forEach((point, index) => {
+          const [x, y] = point;
+          if (index === 0) {
+            maskContext.moveTo(x, y);
+          } else {
+            maskContext.lineTo(x, y);
+          }
+        });
+        maskContext.closePath();
+
+        // Isi mask dengan putih tanpa membuat lubang
+        maskContext.fillStyle = "white";
+        maskContext.fill();
+
+        // Update mask texture
+        maskTexture.needsUpdate = true;
+      }
+
+      // Fungsi callback ketika FaceMesh mendeteksi landmark
+      function onResults(results) {
+        if (
+          results.multiFaceLandmarks &&
+          results.multiFaceLandmarks.length > 0
+        ) {
+          const landmarks = results.multiFaceLandmarks[0];
+          drawMask(landmarks);
+        } else {
+          // Jika tidak ada wajah yang terdeteksi, kosongkan mask
+          maskContext.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+          maskTexture.needsUpdate = true;
+        }
+
+        // Rendering dilakukan dalam loop animasi
+      }
+    </script>
+  </body>
+</html>

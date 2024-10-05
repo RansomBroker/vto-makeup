@@ -7,8 +7,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="RGBELoader.js"></script>
     <style>
       body {
         display: flex;
@@ -104,10 +102,18 @@
         );
         camera.position.z = 1;
 
-        renderer.outputEncoding = THREE.sRGBEncoding;
-        renderer.toneMappingExposure = 1; // Sesuaikan eksposur untuk menambah/kurangi pencahayaan
+        // Add directional lights
+        const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight1.position.set(0, 1, -10).normalize();
+        scene.add(directionalLight1);
 
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight2.position.set(1, 1, 1).normalize();
+        scene.add(directionalLight2);
+
+        const directionalLight3 = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight3.position.set(-1, 1, 1).normalize();
+        scene.add(directionalLight3);
       } catch (e) {
         console.error(
           "WebGL not supported, falling back on experimental-webgl",
@@ -1266,7 +1272,7 @@
         );
         geometry.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2));
         geometry.setIndex(faces);
-        geometry.computeVertexNormals();
+        //geometry.computeVertexNormals(); //<-- this
 
         const mesh = new THREE.Mesh(geometry);
 
@@ -1291,52 +1297,28 @@
         }
       }
 
-      // gloss
-      let eyeshadow = createMesh();
-      const textureEyeshadow = new THREE.TextureLoader().load(
-        "texture/eyeshadow/eyeshadow-1.png"
-      );
-      const materialEyeshadow = new THREE.MeshStandardMaterial({
-        color: 0xff0000,
-        emissive: 0x000000,
-        transparent: true,
-        opacity: 1,
-        side: THREE.DoubleSide,
-        flatShading: true,
-        roughness: 0,
-        metalness: 0,
-        wireframe: false,
-        depthTest: true,
-        depthWrite: true,
-      });
+      //   const eyeshadow = createMesh();
 
-      eyeshadow.material = materialEyeshadow;
+      //   const materialEyeshadow = new THREE.MeshBasicMaterial({
+      //     color: 0xffffff,
+      //     side: THREE.BackSide,
+      //     transparent: true,
+      //     opacity: 0,
+      //     wireframe: false,
+      //     depthTest: true,
+      //     depthWrite: true,
+      //   });
 
-      new THREE.RGBELoader().load("studio_small_08_1k.hdr", (texture) => {
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        scene.background = texture;
-        scene.environment = texture;
+      //   eyeshadow.material = materialEyeshadow;
 
-        // Rotate environment map
-        const pmremGenerator = new THREE.PMREMGenerator(renderer);
-        const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+      //   scene.add(eyeshadow);
 
-        // Optionally, rotate the environment map to adjust lighting
-        const envMapRotation = new THREE.Matrix4().makeRotationY(
-          THREE.MathUtils.degToRad(20)
-        ); // Adjust rotation angle as needed
-        envMap.matrixAutoUpdate = false;
-        envMap.matrix = envMapRotation;
+      const eyebrowIndices = [
+        [55, 65, 52, 53, 46, 52, 65, 55], // Left eyebrow
+        [285, 295, 282, 283, 276, 282, 295, 285], // Right eyebrow
+      ];
 
-        scene.environment = envMap;
-      });
-
-      scene.add(eyeshadow);
       function onResults(results) {
-        outputCtx.save();
-        outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-        outputCtx.translate(outputCanvas.width, 0);
-        outputCtx.scale(-1, 1);
         outputCtx.drawImage(
           results.image,
           0,
@@ -1345,17 +1327,44 @@
           outputCanvas.height
         );
 
-        // Automatically update position for all meshes in the scene
-        scene.children.forEach((child) => {
-          if (child.isMesh) {
-            updatePosition(results, child);
-          }
-        });
+        if (results.multiFaceLandmarks.length > 0) {
+          faceLandmarks = results.multiFaceLandmarks[0];
 
-        renderer.render(scene, camera);
-        outputCtx.restore();
+          if (renderer) {
+            renderer.clear();
+            const eyebrowMeshes = createEyebrowMeshes(faceLandmarks);
+            eyebrowMeshes.forEach((mesh) => scene.add(mesh));
+            renderer.render(scene, camera);
+          }
+        }
       }
 
+      function createEyebrowMeshes(landmarks) {
+        const material = new THREE.MeshBasicMaterial({
+          color: 0x000000,
+          opacity: 0.5,
+          transparent: true,
+        });
+
+        return eyebrowIndices.map((indices) => {
+          const geometry = new THREE.BufferGeometry();
+          indices.forEach((index) => {
+            const [x, y] = landmarks[index];
+            geometry.vertices.push(
+              new THREE.Vector3(
+                x * threeCanvas.width - threeCanvas.width / 2,
+                -y * threeCanvas.height + threeCanvas.height / 2,
+                0
+              )
+            );
+          });
+          geometry.faces.push(new THREE.Face3(0, 1, 2));
+          geometry.faces.push(new THREE.Face3(2, 3, 4));
+          geometry.faces.push(new THREE.Face3(4, 5, 6));
+          geometry.faces.push(new THREE.Face3(6, 7, 0));
+          return new THREE.Mesh(geometry, material);
+        });
+      }
       const cameraStream = new Camera(videoElement, {
         onFrame: async () => {
           await faceMesh.send({ image: videoElement });

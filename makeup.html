@@ -7,8 +7,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="RGBELoader.js"></script>
     <style>
       body {
         display: flex;
@@ -91,6 +89,9 @@
           alpha: true,
           antialias: true,
         });
+
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        renderer.toneMappingExposure = 2.3;
         renderer.setSize(threeCanvas.width, threeCanvas.height);
         renderer.autoClear = false;
         scene = new THREE.Scene();
@@ -103,11 +104,6 @@
           1000
         );
         camera.position.z = 1;
-
-        renderer.outputEncoding = THREE.sRGBEncoding;
-        renderer.toneMappingExposure = 1; // Sesuaikan eksposur untuk menambah/kurangi pencahayaan
-
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
       } catch (e) {
         console.error(
           "WebGL not supported, falling back on experimental-webgl",
@@ -1291,47 +1287,28 @@
         }
       }
 
-      // gloss
-      let eyeshadow = createMesh();
-      const textureEyeshadow = new THREE.TextureLoader().load(
-        "texture/eyeshadow/eyeshadow-1.png"
+      let lipColor = createMesh();
+      const texturelipColor = new THREE.TextureLoader().load(
+        "texture/lipstick_one.png"
       );
-      const materialEyeshadow = new THREE.MeshStandardMaterial({
-        color: 0xff0000,
-        emissive: 0x000000,
+
+      const materialLipColor = new THREE.MeshStandardMaterial({
+        alphaMap: texturelipColor,
+        color: 0x00a2ff,
         transparent: true,
         opacity: 1,
         side: THREE.DoubleSide,
-        flatShading: true,
-        roughness: 0,
-        metalness: 0,
+        roughnes: 1,
+        metalnes: 1,
         wireframe: false,
         depthTest: true,
         depthWrite: true,
       });
 
-      eyeshadow.material = materialEyeshadow;
-
-      new THREE.RGBELoader().load("studio_small_08_1k.hdr", (texture) => {
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        scene.background = texture;
-        scene.environment = texture;
-
-        // Rotate environment map
-        const pmremGenerator = new THREE.PMREMGenerator(renderer);
-        const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-
-        // Optionally, rotate the environment map to adjust lighting
-        const envMapRotation = new THREE.Matrix4().makeRotationY(
-          THREE.MathUtils.degToRad(20)
-        ); // Adjust rotation angle as needed
-        envMap.matrixAutoUpdate = false;
-        envMap.matrix = envMapRotation;
-
-        scene.environment = envMap;
-      });
+      lipColor.material = materialLipColor;
 
       scene.add(eyeshadow);
+
       function onResults(results) {
         outputCtx.save();
         outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Face Landmark Detection with MediaPipe and Three.js</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        background-color: #f0f0f0;
+      }
+      .canvasContainer {
+        position: relative;
+        width: 640px;
+        height: 480px;
+      }
+      video {
+        display: none;
+      }
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+      #outputCanvas {
+        z-index: 1;
+      }
+      #threeCanvas {
+        z-index: 2;
+      }
+    </style>
+  </head>
+  <body>
+    <input
+      type="range"
+      id="stretchSlider"
+      min="1"
+      max="3"
+      step="0.1"
+      value="1"
+    />
+    <video id="videoInput" playsinline></video>
+    <div class="canvasContainer">
+      <canvas id="outputCanvas" width="640" height="480"></canvas>
+      <canvas id="threeCanvas" width="640" height="480"></canvas>
+    </div>
+
+    <script>
+      const videoElement = document.getElementById("videoInput");
+      const outputCanvas = document.getElementById("outputCanvas");
+      const outputCtx = outputCanvas.getContext("2d");
+      const threeCanvas = document.getElementById("threeCanvas");
+      const stretchSlider = document.getElementById("stretchSlider");
+
+      let renderer, scene, camera;
+      let faceLandmarks = [];
+
+      async function startVideo() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+          });
+          videoElement.srcObject = stream;
+          await videoElement.play();
+        } catch (err) {
+          console.error("Error accessing the camera: ", err);
+        }
+      }
+
+      startVideo();
+
+      const faceMesh = new FaceMesh({
+        locateFile: (file) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+      });
+
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+
+      faceMesh.onResults(onResults);
+
+      try {
+        renderer = new THREE.WebGLRenderer({
+          canvas: threeCanvas,
+          alpha: true,
+          antialias: true,
+        });
+        renderer.setSize(threeCanvas.width, threeCanvas.height);
+        renderer.autoClear = false;
+        scene = new THREE.Scene();
+        camera = new THREE.OrthographicCamera(
+          -threeCanvas.width / 2,
+          threeCanvas.width / 2,
+          threeCanvas.height / 2,
+          -threeCanvas.height / 2,
+          -1000,
+          1000
+        );
+        camera.position.z = 1;
+      } catch (e) {
+        console.error(
+          "WebGL not supported, falling back on experimental-webgl",
+          e
+        );
+        renderer = null;
+        alert(
+          "WebGL not supported, please update your browser or GPU drivers."
+        );
+      }
+
+      const vertexShader = `
+      precision mediump float;
+
+      varying vec2 vUv;
+      uniform float uStretchFactor;
+
+      void main() {
+        vUv = uv;
+        vec3 pos = position;
+
+        // Stretch the y position of the vertices
+        pos.y *= uStretchFactor;
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      }
+    `;
+
+      const fragmentShader = `
+      precision mediump float;
+
+      varying vec2 vUv;
+      uniform sampler2D uTexture;
+
+      void main() {
+        gl_FragColor = texture2D(uTexture, vUv);
+      }
+    `;
+
+      const baseEyebrow = new THREE.PlaneGeometry(80, 80, 16, 16);
+      const eyebrow = new THREE.PlaneGeometry(80, 80, 16, 16);
+
+      const eyebrowTexture = new THREE.TextureLoader().load(
+        "/eyebrow_191031_Sephora_CN_03_f.png"
+      );
+
+      const texture = new THREE.TextureLoader().load(
+        "/eyebrow_191031_Sephora_CN_03.png"
+      );
+
+      const material = new THREE.ShaderMaterial({
+        vertexShader,
+        fragmentShader,
+        uniforms: {
+          uTexture: { value: texture },
+          uStretchFactor: { value: 1.0 },
+        },
+        wireframe: false,
+        side: THREE.DoubleSide,
+      });
+
+      const materialEyebrow = new THREE.ShaderMaterial({
+        vertexShader,
+        fragmentShader,
+        uniforms: {
+          uTexture: { value: eyebrowTexture },
+        },
+        wireframe: false,
+        side: THREE.DoubleSide,
+      });
+
+      const meshBaseEyebrow = new THREE.Mesh(baseEyebrow, material);
+      const meshEyebrow = new THREE.Mesh(eyebrow, materialEyebrow);
+      scene.add(meshBaseEyebrow);
+      scene.add(meshEyebrow);
+
+      function onResults(results) {
+        const stretchFactor = material.uniforms.uStretchFactor.value;
+
+        outputCtx.save();
+        outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+        outputCtx.translate(outputCanvas.width, 0);
+        outputCtx.scale(-1, 1);
+
+        // Apply stretch transformation
+        outputCtx.scale(1, stretchFactor);
+
+        // Draw the image with stretch applied
+        outputCtx.drawImage(
+          results.image,
+          0,
+          0,
+          outputCanvas.width,
+          outputCanvas.height / stretchFactor
+        );
+
+        if (
+          results.multiFaceLandmarks &&
+          results.multiFaceLandmarks.length > 0
+        ) {
+          const landmarks = results.multiFaceLandmarks[0];
+          const centerHead = landmarks[52];
+
+          const centerHeadX =
+            (1 - centerHead.x) * outputCanvas.width - outputCanvas.width / 2;
+          const centerHeadY =
+            -centerHead.y * outputCanvas.height + outputCanvas.height / 2;
+          const centerHeadZ = -centerHead.z * 100;
+          meshBaseEyebrow.position.set(centerHeadX, centerHeadY, centerHeadZ);
+          meshEyebrow.position.set(centerHeadX, centerHeadY, centerHeadZ);
+        }
+
+        renderer.render(scene, camera);
+
+        outputCtx.restore();
+      }
+
+      const cameraStream = new Camera(videoElement, {
+        onFrame: async () => {
+          await faceMesh.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480,
+      });
+
+      cameraStream.start();
+
+      stretchSlider.addEventListener("input", (e) => {
+        const stretchValue = parseFloat(e.target.value);
+        material.uniforms.uStretchFactor.value = stretchValue;
+      });
+    </script>
+  </body>
+</html>
