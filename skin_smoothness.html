@@ -208,7 +208,7 @@
               float twoSigmaColorSq = 2.0 * sigmaColor * sigmaColor;
 
               vec3 colorSum = vec3(0.0);
-              float weightSum = 0.0;
+              float weightSum = 0.0;  
 
               // Kernel size, disesuaikan dengan sigmaSpatial
               int kernelRadius = int(ceil(3.0 * sigmaSpatial));
@@ -398,6 +398,7 @@
 
         // Hitung Convex Hull dari titik-titik landmark
         const hull = computeConvexHull(points);
+        console.log(hull);
 
         if (hull.length < 3) return; // Tidak cukup titik untuk membentuk poligon
 

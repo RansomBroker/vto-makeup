@@ -73,7 +73,6 @@
     <div class="canvasContainer">
       <canvas id="threeCanvas" width="640" height="480"></canvas>
     </div>
-    /1
 
     <script>
       const videoElement = document.getElementById("videoInput");
@@ -1448,15 +1447,24 @@
       const pmremGenerator = new THREE.PMREMGenerator(renderer);
       pmremGenerator.compileEquirectangularShader();
 
-      new THREE.RGBELoader()
-        .setDataType(THREE.HalfFloatType)
-        .load("studio_small_08_1k.hdr", function (texture) {
-          const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-          pmremGenerator.dispose();
-          scene.environment = envMap;
-        });
+      new THREE.RGBELoader().load("studio_small_05_1k.hdr", (texture) => {
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        scene.background = texture;
+        scene.environment = texture;
+
+        // Rotate environment map
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+
+        scene.environment = envMap;
+      });
 
       let lipColor = createMesh();
+      let lipstick = createMesh();
+
+      let lipplumperShadowTexture = new THREE.TextureLoader().load(
+        "map/lip/lipplumper_shadow.png"
+      );
 
       const texturelipColor = new THREE.TextureLoader().load(
         "texture/lipstick_one.png"
@@ -1468,28 +1476,57 @@
 
       const lipRo = new THREE.TextureLoader().load("map/lip/lipcolor_ro.jpg");
 
-      const materialLipColor = new THREE.MeshStandardMaterial({
+      const lipstickSprinkleTexture = new THREE.TextureLoader().load(
+        "map/lip/lipcolor_sprinkle.png"
+      );
+
+      // for lipstick
+      const shimmerMaterial = new THREE.MeshBasicMaterial({
         name: "makeup",
-        //alphaMap: texturelipColor,
+        alphaMap: lipstickSprinkleTexture,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 1,
+        side: THREE.FrontSide,
+        depthTest: true,
+        depthWrite: false,
+      });
+
+      // lip plumper
+
+      const lipplumperShadowMaterial = new THREE.MeshBasicMaterial({
+        name: "makeup",
+        alphaMap: lipplumperShadowTexture,
+        color: 0x000000,
+        transparent: true,
+        opacity: 1,
+        side: THREE.FrontSide,
+        depthTest: true,
+        depthWrite: false,
+      });
+
+      const materialLipColor = new THREE.MeshStandardMaterial({
+        name: "makeup1",
+        alphaMap: texturelipColor,
         color: 0xff0000,
         emissive: 0x000000,
         transparent: true,
-        opacity: 1,
-        side: THREE.DoubleSide,
-        flatShading: true,
-        roughnes: 0,
-        metalnes: 0,
+        opacity: 1, // if lipplumper 2
+        side: THREE.FrontSide,
+        flatShading: false, // Menonaktifkan flat shading
+        roughness: 1, // Mengatur roughness agar lebih halus
+        metalness: 0, // Tidak metalik
         wireframe: false,
         depthTest: true,
-        depthWrite: true,
+        depthWrite: false, // Menonaktifkan depth write untuk transparansi
         normalMap: lipNormal,
-        roughnesMap: lipRo,
+        roughnessMap: lipRo,
       });
 
-      lipColor.material = materialLipColor;
-      lipColor.material.normalScale.set(2, 1);
+      lipColor.material = lipplumperShadowMaterial;
+      lipstick.material = materialLipColor;
 
-      //scene.add(lipColor);
+      scene.add(lipstick, lipColor);
 
       function onResults(results) {
         const archFactor = parseFloat(archSlider.value);
@@ -1533,9 +1570,13 @@
             if (child.material.name === "makeup") {
               updatePosition(results, child);
             }
+            if (child.material.name === "makeup1") {
+              updatePosition(results, child);
+            }
           }
         });
 
+        console.log(uniforms.leftEyebrow);
         renderer.render(scene, camera);
       }
 
